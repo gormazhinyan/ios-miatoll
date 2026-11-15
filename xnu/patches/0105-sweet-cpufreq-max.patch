@@ -1,0 +1,35 @@
+--- a/bsd/dev/sweet_cpufreq.c
++++ b/bsd/dev/sweet_cpufreq.c
+@@ -43,14 +43,16 @@
+ sweet_cpufreq_probe(void)
+ {
+     int enabled = 1;
++    uint32_t mask = 0;
+ 
+     PE_parse_boot_argn("sweetcpufreq", &enabled, sizeof(enabled));
++    PE_parse_boot_argn("sweetcpumax", &mask, sizeof(mask));
+     if (!enabled) {
+         return;
+     }
+     for (unsigned d = 0; d < sizeof(osm_dom) / sizeof(osm_dom[0]); d++) {
+         vm_offset_t b = ml_io_map(osm_dom[d].pa, OSM_SIZE);
+-        uint32_t prev = 0;
++        uint32_t prev = 0, maxidx = 0;
+ 
+         if (b == 0) {
+             printf("SWEET CPUFREQ: %s map failed\n", osm_dom[d].name);
+@@ -71,7 +73,14 @@
+             if (i > 0 && khz == prev) {
+                 break;
+             }
++            maxidx = i;
+             prev = khz;
++        }
++        if (mask & (1u << d)) {
++            *(volatile uint32_t *)(b + OSM_PERF_STATE) = maxidx;
++            __asm__ volatile ("dsb sy" ::: "memory");
++            printf("SWEET CPUFREQ: %s set perf_state %u (%u kHz), readback 0x%08x\n",
++                osm_dom[d].name, maxidx, prev, cf_rd(b, OSM_PERF_STATE));
+         }
+     }
+ }
