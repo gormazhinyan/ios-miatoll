@@ -1,0 +1,11 @@
+--- a/iokit/Kernel/arm/TopazModem.cpp
++++ b/iokit/Kernel/arm/TopazModem.cpp
+@@ -1,7 +1,7 @@
+ 	struct ifnet_init_eparams init = {};
+ 	init.ver = IFNET_INIT_CURRENT_VERSION;
+ 	init.len = sizeof(init);
+-	init.flags = IFNET_INIT_NX_NOAUTO;
++	init.flags = IFNET_INIT_LEGACY | IFNET_INIT_NX_NOAUTO;
+ 	init.uniqueid = "sweetwl";
+ 	init.uniqueid_len = sizeof("sweetwl") - 1;
+ 	init.name = "en";
