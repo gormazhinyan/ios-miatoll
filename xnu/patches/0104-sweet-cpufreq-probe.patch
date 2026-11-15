@@ -1,0 +1,104 @@
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -111,6 +111,7 @@
+ bsd/dev/sweet_rpmh.c			standard
+ bsd/dev/sweet_spmi.c			standard
+ bsd/dev/sweet_usb.c			standard
++bsd/dev/sweet_cpufreq.c			standard
+ bsd/dev/mem.c				standard
+ bsd/dev/munge.c 			optional config_requires_u32_munging
+ bsd/dev/unix_startup.c			standard
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -660,6 +660,10 @@
+ 	sweet_keys_init();
+ 	sweet_touch_init();
+ 	sweet_usb_probe();
++	{
++		extern void sweet_cpufreq_probe(void);
++		sweet_cpufreq_probe();
++	}
+ 	return 0;
+ }
+ 
+--- /dev/null
++++ b/bsd/dev/sweet_cpufreq.c
+@@ -0,0 +1,78 @@
++/*
++ * SWEET: CPU frequency probe (read-only).
++ *
++ * The SoC uses the Qualcomm OSM block (DT qcom,clk-cpu-osm-atoll, cpucc@18321000).
++ * Two per-cluster register windows hold the frequency LUT, the current vote and
++ * the perf-state index (layout from mainline qcom-cpufreq-hw.c). This only
++ * reads and prints; it never writes a register. Disable with sweetcpufreq=0.
++ */
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <pexpert/pexpert.h>
++
++extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
++void sweet_cpufreq_probe(void);
++
++#define OSM_SIZE        0x1400
++#define OSM_ENABLE      0x000
++#define OSM_FREQ_LUT    0x110
++#define OSM_VOLT_LUT    0x114
++#define OSM_VOTE        0x704
++#define OSM_PERF_STATE  0x920
++#define OSM_ROW         32
++#define OSM_MAX_ROWS    40
++
++static const struct {
++    const char *name;
++    uint32_t    pa;
++} osm_dom[] = {
++    { "dom0(cpu0-5)", 0x18323000 },
++    { "dom1(cpu6-7)", 0x18325800 },
++};
++
++static uint32_t
++cf_rd(vm_offset_t base, uint32_t off)
++{
++    uint32_t v = *(volatile uint32_t *)(base + off);
++    __asm__ volatile ("dmb oshld" ::: "memory");
++    return v;
++}
++
++void
++sweet_cpufreq_probe(void)
++{
++    int enabled = 1;
++
++    PE_parse_boot_argn("sweetcpufreq", &enabled, sizeof(enabled));
++    if (!enabled) {
++        return;
++    }
++    for (unsigned d = 0; d < sizeof(osm_dom) / sizeof(osm_dom[0]); d++) {
++        vm_offset_t b = ml_io_map(osm_dom[d].pa, OSM_SIZE);
++        uint32_t prev = 0;
++
++        if (b == 0) {
++            printf("SWEET CPUFREQ: %s map failed\n", osm_dom[d].name);
++            continue;
++        }
++        printf("SWEET CPUFREQ: %s base 0x%08x enable 0x%08x vote 0x%08x perf_state 0x%08x\n",
++            osm_dom[d].name, osm_dom[d].pa, cf_rd(b, OSM_ENABLE), cf_rd(b, OSM_VOTE),
++            cf_rd(b, OSM_PERF_STATE));
++        for (unsigned i = 0; i < OSM_MAX_ROWS; i++) {
++            uint32_t f = cf_rd(b, OSM_FREQ_LUT + i * OSM_ROW);
++            uint32_t v = cf_rd(b, OSM_VOLT_LUT + i * OSM_ROW);
++            uint32_t src = f >> 30, lval = f & 0xff, cores = (f >> 16) & 7;
++            /* src!=0: lval * 19.2 MHz (XO); src==0: GPLL0/2 = 300 MHz. */
++            uint32_t khz = src ? lval * 19200 : 300000;
++
++            printf("SWEET CPUFREQ: %s lut[%u] raw 0x%08x src %u lval %u cores %u = %u kHz volt 0x%08x\n",
++                osm_dom[d].name, i, f, src, lval, cores, khz, v);
++            if (i > 0 && khz == prev) {
++                break;
++            }
++            prev = khz;
++        }
++    }
++}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
