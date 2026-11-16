@@ -1,6 +1,6 @@
 --- a/iokit/Kernel/arm/TopazModem.cpp
 +++ b/iokit/Kernel/arm/TopazModem.cpp
-@@ -1,7 +1,7 @@
+@@ -3000,7 +3000,7 @@
  	struct ifnet_init_eparams init = {};
  	init.ver = IFNET_INIT_CURRENT_VERSION;
  	init.len = sizeof(init);
