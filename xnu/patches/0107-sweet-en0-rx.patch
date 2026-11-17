@@ -1,0 +1,20 @@
+--- a/iokit/Kernel/arm/TopazModem.cpp
++++ b/iokit/Kernel/arm/TopazModem.cpp
+@@ -2000,6 +2000,17 @@
+ 		return;
+ 	}
+ 	m_copyback((struct mbuf *)m, 0, (int)length, (void *)frame);
++	if (mbuf_len(m) < ETHER_HDR_LEN) {
++		mbuf_freem(m);
++		return;
++	}
++	/* as if_fake does for a received frame: rcvif, link header, strip it, bpf tap */
++	void *hdr = mbuf_data(m);
++	(void)mbuf_pkthdr_setrcvif(m, ifp);
++	mbuf_pkthdr_setheader(m, hdr);
++	mbuf_pkthdr_adjustlen(m, -ETHER_HDR_LEN);
++	(void)mbuf_setdata(m, (char *)mbuf_data(m) + ETHER_HDR_LEN, mbuf_len(m) - ETHER_HDR_LEN);
++	bpf_tap_in(ifp, DLT_EN10MB, m, hdr, sizeof(struct ether_header));
+ 	struct ifnet_stat_increment_param st = {};
+ 	st.packets_in = 1;
+ 	st.bytes_in = (u_int32_t)length;
